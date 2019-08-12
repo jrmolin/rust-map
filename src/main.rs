@@ -1,15 +1,25 @@
 extern crate dirs;
 extern crate rusqlite;
 extern crate time;
+
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result};
 use time::Timespec;
 
 use std::fs;
+use std::env;
 use std::path::{Path, PathBuf};
 
+fn dump(s: &String) {
+    println!("dumping [{}]", s);
+}
+
 fn setup(p: &Path) -> Result<()> {
-    fs::create_dir_all(p);
+    let res = fs::create_dir_all(p);
+    let _res = match res {
+        Ok(_) => dump(&String::from("setup complete!")),
+        Err(err) => println!("failed to setup, because [{}]", err),
+    };
     Ok(())
 }
 
@@ -61,18 +71,51 @@ fn go() -> Result<()> {
     Ok(())
 }
 
+fn print_usage(prog: String) {
+    println!("Usage: {} [-h,--help] <key> [<value>]", prog);
+    println!("  -h,--help  print this help message");
+    println!("  if <value> is a file, the contents of the file will be read and stored");
+}
+
 fn main() {
-    println!("Hello, world!");
+
+    // process the arguments
+    let argv : Vec<String> = env::args().collect();
+    let program = argv[0].clone();
+
+    // if someone passes in -h/--help, print the usage
+    // if someone leaves out the key, print the usage
+    // if someone leaves out the value, lookup the key
+    // if someone puts key and value, store the value at the key
+
+    // skip the first element
+    let mut args : Vec<String> = Vec::new();
+    for (index,arg) in argv.iter().skip(1).enumerate() {
+
+        match arg.as_ref() {
+            "-h" | "--help" => {
+                println!("got a help request at index {}!", index);
+                print_usage(program);
+                return;
+            }
+            _ => {
+                args.push(arg.to_string());
+            }
+        }
+    }
+
+    if args.len() < 1 {
+        print_usage(program);
+        return;
+    }
 
     let mut config : PathBuf = dirs::config_dir().unwrap();
 
     config.push("mappy");
     println!("the user's config directory is {:?}", config);
     let f = setup(&config);
-    let f = match f {
-        Ok(file) => {
-            println!("succeeded with creating {:?}", config);
-        },
+    let _f = match f {
+        Ok(_) => f,
         Err(error) => {
             panic!("There was a problem opening the file: {:?}", error)
         },
