@@ -1,0 +1,9 @@
+[package]
+name = "mappy"
+version = "0.1.0"
+authors = ["mo <jmolinatto@endgame.com>"]
+
+[dependencies]
+dirs = "2.0.2"
+rusqlite = "0.20.0"
+time = "0.1"
