@@ -95,13 +95,13 @@ fn lookup(conn: &Connection, key: String) -> Result<String> {
     panic!("could not find [{:?}]", key)
 }
 
-fn insert(conn: &Connection, key: &String, value: String) -> Result<()> {
+fn insert(conn: &Connection, key: &String, value: &String) -> Result<()> {
     // 
 
     let me = Mapping {
         id: 0,
         key: key.to_string(),
-        value: Some(value),
+        value: Some(value.to_string()),
     };
     conn.execute(
         "REPLACE INTO mapping (key, value)
@@ -112,7 +112,7 @@ fn insert(conn: &Connection, key: &String, value: String) -> Result<()> {
     Ok(())
 }
 
-fn print_usage(prog: String) {
+fn print_usage(prog: &String) {
     println!("Usage: {} [-h,--help] <key> [<value>]", prog);
     println!("  -h,--help     print this help message");
     println!("  -v,--verbose  print verbose information");
@@ -133,7 +133,7 @@ fn main() {
         match arg.as_ref() {
             "-h" | "--help" => {
                 dump!("got a help request at index {}!", index);
-                print_usage(program);
+                print_usage(&program);
                 return;
             }
             "-v" | "--verbose" => {
@@ -146,7 +146,7 @@ fn main() {
     }
 
     if args.len() < 1 {
-        print_usage(program);
+        print_usage(&program);
         return;
     }
 
@@ -187,7 +187,7 @@ fn main() {
 
         // do base64 thing
         let value_base64 = base64::encode(&value_orig);
-        let result = insert(&conn, &key, value_base64);
+        let result = insert(&conn, &key, &value_base64);
         let _result = match result {
             Ok(res) => res,
             Err(error) => {
