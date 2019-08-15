@@ -3,9 +3,7 @@ extern crate rusqlite;
 extern crate time;
 extern crate base64;
 
-use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result};
-use time::Timespec;
 
 use std::fs;
 use std::env;
@@ -36,7 +34,7 @@ fn open_or_create_db(p: &Path) -> Result<Connection> {
         create = true;
     }
 
-    let mut conn = Connection::open(p)?;
+    let conn = Connection::open(p)?;
 
     // if file already exists, trust that it's correct
     // CREATE TRIGGER update_appInfo_updatetime  BEFORE update ON appInfo 
@@ -97,12 +95,12 @@ fn lookup(conn: &Connection, key: String) -> Result<String> {
     panic!("could not find [{:?}]", key)
 }
 
-fn insert(conn: &Connection, key: String, value: String) -> Result<()> {
+fn insert(conn: &Connection, key: &String, value: String) -> Result<()> {
     // 
 
     let me = Mapping {
         id: 0,
-        key: key,
+        key: key.to_string(),
         value: Some(value),
     };
     conn.execute(
@@ -139,9 +137,7 @@ fn main() {
                 return;
             }
             "-v" | "--verbose" => {
-                unsafe {
-                    DEBUG.fetch_add(1, Ordering::Relaxed);
-                }
+                DEBUG.fetch_add(1, Ordering::Relaxed);
             }
             _ => {
                 args.push(arg.to_string());
@@ -191,7 +187,13 @@ fn main() {
 
         // do base64 thing
         let value_base64 = base64::encode(&value_orig);
-        insert(&conn, key, value_base64);
+        let result = insert(&conn, &key, value_base64);
+        let _result = match result {
+            Ok(res) => res,
+            Err(error) => {
+                panic!("could not insert {:?} :: {:?}", key.to_string(), error);
+            }
+        };
     } else if args.len() == 1 {
         let key = args[0].clone();
 
@@ -199,12 +201,12 @@ fn main() {
         let result = match result {
             Ok(res) => res,
             Err(error) => {
-                panic!("could not find {:?}", key.to_string());
+                panic!("could not find {:?} :: {:?}", key.to_string(), error);
             }
         };
         let result_orig = base64::decode(&result).unwrap();
         let result_string = str::from_utf8(&result_orig).unwrap();
         println!("{}", result_string);
     }
-    conn.close();
+    let _res = conn.close();
 }
