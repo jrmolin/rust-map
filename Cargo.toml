@@ -7,3 +7,4 @@ authors = ["mo <jmolinatto@endgame.com>"]
 dirs = "2.0.2"
 rusqlite = "0.20.0"
 time = "0.1"
+base64 = "0.10"
