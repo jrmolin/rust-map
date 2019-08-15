@@ -11,15 +11,18 @@ use std::fs;
 use std::env;
 use std::str;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn dump(s: &String) {
-    println!("dumping [{}]", s);
+static DEBUG : AtomicUsize = AtomicUsize::new(0);
+
+macro_rules! dump {
+    ($( $args:expr ),*) => { if DEBUG.load(Ordering::Relaxed) > 0 { println!( $( $args ),* ); } }
 }
 
 fn setup(p: &Path) -> Result<()> {
     let res = fs::create_dir_all(p);
     let _res = match res {
-        Ok(_) => dump(&String::from("setup complete!")),
+        Ok(_) => dump!("setup complete!"),
         Err(err) => println!("failed to setup, because [{}]", err),
     };
 
@@ -36,14 +39,24 @@ fn open_or_create_db(p: &Path) -> Result<Connection> {
     let mut conn = Connection::open(p)?;
 
     // if file already exists, trust that it's correct
+    // CREATE TRIGGER update_appInfo_updatetime  BEFORE update ON appInfo 
+    // begin
+    // update appinfo set updatedatetime = strftime('%Y-%m-%d %H:%M:%S:%s','now', 'localtime') where bundle_id = old.bundle_id;
+    // end
+    //
+    // CREATE TABLE "appInfo" (bundle_id INTEGER PRIMARY KEY,title text, updatedatetime text DEFAULT (strftime('%Y-%m-%d %H:%M:%S:%s','now', 'localtime')))
+
     if create {
         conn.execute(
             "CREATE TABLE mapping (
                       id              INTEGER PRIMARY KEY,
                       key             TEXT NOT NULL,
-                      time_created    TEXT NOT NULL,
                       value           BLOB
                       )",
+            params![],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_mapping_key ON mapping (key);",
             params![],
         )?;
 
@@ -55,20 +68,18 @@ fn open_or_create_db(p: &Path) -> Result<Connection> {
 struct Mapping {
     id: i32,
     key: String,
-    time_created: Timespec,
     value: Option<String>,
 }
 
 fn lookup(conn: &Connection, key: String) -> Result<String> {
     // 
 
-    let mut stmt = conn.prepare("SELECT id, key, time_created, value FROM mapping")?;
+    let mut stmt = conn.prepare("SELECT id, key, value FROM mapping")?;
     let mapping_iter = stmt.query_map(params![], |row| {
         Ok(Mapping {
             id: row.get(0)?,
             key: row.get(1)?,
-            time_created: row.get(2)?,
-            value: row.get(3)?,
+            value: row.get(2)?,
         })
     })?;
 
@@ -92,13 +103,12 @@ fn insert(conn: &Connection, key: String, value: String) -> Result<()> {
     let me = Mapping {
         id: 0,
         key: key,
-        time_created: time::get_time(),
         value: Some(value),
     };
     conn.execute(
-        "INSERT INTO mapping (key, time_created, value)
-                  VALUES (?1, ?2, ?3)",
-        params![me.key, me.time_created, me.value],
+        "REPLACE INTO mapping (key, value)
+                  VALUES (?1, ?2)",
+        params![me.key, me.value],
     )?;
 
     Ok(())
@@ -106,7 +116,8 @@ fn insert(conn: &Connection, key: String, value: String) -> Result<()> {
 
 fn print_usage(prog: String) {
     println!("Usage: {} [-h,--help] <key> [<value>]", prog);
-    println!("  -h,--help  print this help message");
+    println!("  -h,--help     print this help message");
+    println!("  -v,--verbose  print verbose information");
     println!("  if <value> is a file, the contents of the file will be read and stored");
 }
 
@@ -123,9 +134,14 @@ fn main() {
         // if someone passes in -h/--help, print the usage
         match arg.as_ref() {
             "-h" | "--help" => {
-                println!("got a help request at index {}!", index);
+                dump!("got a help request at index {}!", index);
                 print_usage(program);
                 return;
+            }
+            "-v" | "--verbose" => {
+                unsafe {
+                    DEBUG.fetch_add(1, Ordering::Relaxed);
+                }
             }
             _ => {
                 args.push(arg.to_string());
@@ -145,7 +161,7 @@ fn main() {
     let mut config : PathBuf = dirs::config_dir().unwrap();
 
     config.push("mappy");
-    println!("the user's config directory is {:?}", config);
+    dump!("the user's config directory is {:?}", config);
     let f = setup(&config);
     let _f = match f {
         Ok(_) => f,
@@ -158,7 +174,7 @@ fn main() {
 
     // if there is a file at maps.db, try to open it
     // otherwise, create the database
-    println!("opening {:?}", config);
+    dump!("opening {:?}", config);
     let res = open_or_create_db(&config);
     let conn = match res {
         Ok(conn_) => conn_,
