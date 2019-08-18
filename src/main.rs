@@ -27,11 +27,17 @@ fn setup(p: &Path) -> Result<()> {
     Ok(())
 }
 
-fn open_or_create_db(p: &Path) -> Result<Connection> {
-    let mut create = false;
+fn path_is_file(p: &Path) -> bool {
+    let meta = fs::metadata(p);
 
-    if !p.exists() {
-        create = true;
+    meta.is_ok() && meta.unwrap().is_file()
+}
+
+fn open_or_create_db(p: &Path) -> Result<Connection> {
+    let mut create = true;
+
+    if path_is_file(p) {
+        create = false;
     }
 
     let conn = Connection::open(p)?;
@@ -96,15 +102,10 @@ fn lookup(conn: &Connection, key: &String) -> Result<String> {
 fn insert(conn: &Connection, key: &String, value: &String) -> Result<()> {
     // 
 
-    let me = Mapping {
-        id: 0,
-        key: key.to_string(),
-        value: Some(value.to_string()),
-    };
     conn.execute(
         "REPLACE INTO mapping (key, value)
                   VALUES (?1, ?2)",
-        params![me.key, me.value],
+        params![key, value],
     )?;
 
     Ok(())
@@ -156,40 +157,47 @@ fn main() {
 
     config.push("mappy");
     dump!("the user's config directory is {:?}", config);
-    let f = setup(&config);
-    let _f = match f {
-        Ok(_) => f,
+    let _f = match setup(&config) {
+        Ok(_f) => _f,
         Err(error) => {
-            panic!("There was a problem opening the file: {:?}", error)
+            panic!("Error: There was a problem opening the file: {:?}", error)
         },
     };
 
     config.push("maps.db");
 
-    // if there is a file at maps.db, try to open it
-    // otherwise, create the database
+    // open a connection to the database file
     dump!("opening {:?}", config);
     let res = open_or_create_db(&config);
     let conn = match res {
         Ok(conn_) => conn_,
         Err(error) => {
-            panic!("failed to open {:?} with {:?}", config,  error);
+            panic!("Error: failed to open {:?} with {:?}", config, error);
         },
     };
 
     // do the thing now
     if args.len() >= 2 {
         // we only care about the first two
-        let key = args[0].clone();
+        let key = &args[0];
         let value_orig = args[1].clone();
 
         // do base64 thing
-        let value_base64 = base64::encode(&value_orig);
+        let mut value_base64 = base64::encode(&value_orig);
+
+        let value_path = Path::new(&value_orig);
+
+        if path_is_file(&value_path) {
+            let value_orig = fs::read_to_string(value_path).unwrap();
+            value_base64 = base64::encode(&value_orig);
+            println!("value is a file! {:?}", value_orig);
+        }
+
         let result = insert(&conn, &key, &value_base64);
         let _result = match result {
             Ok(res) => res,
             Err(error) => {
-                panic!("could not insert {:?} :: {:?}", key.to_string(), error);
+                panic!("Error: could not insert {:?} :: {:?}", &key[..], error);
             }
         };
     } else if args.len() == 1 {
@@ -199,7 +207,7 @@ fn main() {
         let result = match result {
             Ok(res) => res,
             Err(error) => {
-                panic!("could not find {:?} :: {:?}", key.to_string(), error);
+                panic!("Error: could not find {:?} :: {:?}", &key[..], error);
             }
         };
         let result_orig = base64::decode(&result).unwrap();
