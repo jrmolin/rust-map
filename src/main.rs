@@ -69,11 +69,11 @@ struct Mapping {
     value: Option<String>,
 }
 
-fn lookup(conn: &Connection, key: String) -> Result<String> {
+fn lookup(conn: &Connection, key: &String) -> Result<String> {
     // 
 
-    let mut stmt = conn.prepare("SELECT id, key, value FROM mapping")?;
-    let mapping_iter = stmt.query_map(params![], |row| {
+    let mut stmt = try!(conn.prepare("SELECT id, key, value FROM mapping where key = :key"));
+    let mapping_iter = stmt.query_map_named(&[(":key", key)], |row| {
         Ok(Mapping {
             id: row.get(0)?,
             key: row.get(1)?,
@@ -83,13 +83,11 @@ fn lookup(conn: &Connection, key: String) -> Result<String> {
 
     for map in mapping_iter {
         let m = &map.unwrap();
-        if key == m.key {
-            let value = match &m.value {
-                Some(i) => i,
-                None => panic!("no value set!"),
-            };
-            return Ok(value.to_string());
+        let value = match &m.value {
+            Some(i) => i,
+            None => panic!("no value set!"),
         };
+        return Ok(value.to_string());
     };
 
     panic!("could not find [{:?}]", key)
@@ -195,9 +193,9 @@ fn main() {
             }
         };
     } else if args.len() == 1 {
-        let key = args[0].clone();
+        let key = &args[0];
 
-        let result = lookup(&conn, key.to_string());
+        let result = lookup(&conn, key);
         let result = match result {
             Ok(res) => res,
             Err(error) => {
